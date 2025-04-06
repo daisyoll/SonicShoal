@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SonicShoal - Ocean Noise Impact</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/addons/p5.sound.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Prevents scrollbars */
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block; /* Removes extra space below canvas */
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 1rem;
+            border-radius: 5px;
+            max-width: 300px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            color: white;
+            z-index: 10; /* Ensures it stays above the canvas */
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            color: white;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div class="info">
+        <h2>SonicShoal</h2>
+        <p>Press and hold SPACEBAR to increase ocean noise. Watch marine life react and the highlighted area grow. Release to quiet the ocean.</p>
+    </div>
+    <div id="loading">Loading...</div>
+
+    <script>
+        let creatures = [];
+        let noiseSource;
+        let mySound;
+        let bgSound;
+        let noiseVolume = 0;
+        let maxVolume = 1.0;
+        let volumeIncreaseRate = 0.02;
+        let volumeDecreaseRate = 0.05;
+        const numCreatures = 100;
+        let isLoaded = false;
+
+        function preload() {
+            mySound = loadSound(
+                'https://raw.githubusercontent.com/daisyoll/SonicShoal/main/Submarine%20Hatch%20Outer%20Open%20Or%20Close%20-%20QuickSounds.com.mp3',
+                soundLoaded,
+                soundFailed
+            );
+            bgSound = loadSound(
+                'https://raw.githubusercontent.com/daisyoll/SonicShoal/main/Underwater%20Subsonic%20Drone%20-%20QuickSounds.com.mp3',
+                bgSoundLoaded,
+                bgSoundFailed
+            );
+        }
+
+        function soundLoaded() {
+            console.log("Submarine Hatch sound loaded successfully");
+            setupSound();
+        }
+
+        function soundFailed(err) {
+            console.log("Submarine Hatch sound failed to load:", err);
+            if (bgSound && bgSound.isLoaded()) setupSound();
+            else if (!bgSound) isLoaded = true;
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function bgSoundLoaded() {
+            console.log("Background sound loaded successfully");
+            setupBgSound();
+        }
+
+        function bgSoundFailed(err) {
+            console.log("Background sound failed to load:", err);
+            if (mySound && mySound.isLoaded()) setupSound();
+            else if (!mySound) isLoaded = true;
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function setup() {
+            let canvas = createCanvas(windowWidth, windowHeight);
+            canvas.parent('canvas-container');
+            for (let i = 0; i < numCreatures; i++) {
+                let type = random(['fish', 'jelly', 'shell']);
+                creatures.push(new Creature(random(width), random(height), type));
+            }
+            noiseSource = createVector(width / 2, height / 2);
+        }
+
+        function setupSound() {
+            if (mySound) {
+                mySound.onended(() => {
+                    mySound.loop();
+                });
+                mySound.loop();
+                mySound.setVolume(0);
+            }
+            if (!bgSound || (bgSound && bgSound.isLoaded())) {
+                isLoaded = true;
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function setupBgSound() {
+            if (bgSound) {
+                bgSound.loop();
+                bgSound.setVolume(0.2);
+            }
+            if (!mySound || (mySound && mySound.isLoaded())) {
+                isLoaded = true;
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function draw() {
+            if (!isLoaded) return;
+            let c1 = color(10, 20, 50);
+            let c2 = color(20, 50, 100);
+            for (let y = 0; y < height; y++) {
+                let inter = map(y, 0, height, 0, 1);
+                let c = lerpColor(c1, c2, inter);
+                stroke(c);
+                line(0, y, width, y);
+            }
+            noiseSource.set(mouseX, mouseY);
+            if (keyIsDown(32)) {
+                noiseVolume = min(noiseVolume + volumeIncreaseRate, maxVolume);
+            } else {
+                noiseVolume = max(noiseVolume - volumeDecreaseRate, 0);
+            }
+            if (mySound) mySound.setVolume(noiseVolume);
+            noFill();
+            stroke(255, 100);
+            strokeWeight(2);
+            let highlightSize = map(noiseVolume, 0, maxVolume, 50, 300);
+            ellipse(noiseSource.x, noiseSource.y, highlightSize, highlightSize);
+            for (let i = creatures.length - 1; i >= 0; i--) {
+                creatures[i].update(noiseSource, noiseVolume);
+                creatures[i].display();
+            }
+        }
+
+        class Creature {
+            constructor(x, y, type) {
+                this.pos = createVector(x, y);
+                this.vel = p5.Vector.random2D().mult(random(0.5, 1.5));
+                this.type = type;
+                this.size = random(10, 30);
+                this.baseSpeed = random(0.5, 1.5);
+                this.color = this.setColor();
+            }
+            setColor() {
+                if (this.type === 'fish') return [100, 150, 255];
+                if (this.type === 'jelly') return [255, 100, 200];
+                return [200, 200, 150];
+            }
+            update(noiseSource, noiseVolume) {
+                let distance = dist(this.pos.x, this.pos.y, noiseSource.x, noiseSource.y);
+                let fleeDistance = map(noiseVolume, 0, maxVolume, 100, 250);
+                if (distance < fleeDistance) {
+                    let flee = p5.Vector.sub(this.pos, noiseSource);
+                    flee.setMag(map(distance, 0, fleeDistance, 3, 0) * noiseVolume);
+                    this.vel.add(flee);
+                    this.vel.limit(3);
+                } else {
+                    this.vel.setMag(this.baseSpeed);
+                    if (random(1) < 0.02) {
+                        this.vel.rotate(random(-30, 30));
+                    }
+                }
+                this.pos.add(this.vel);
+                if (this.pos.x > width) this.pos.x = 0;
+                if (this.pos.x < 0) this.pos.x = width;
+                if (this.pos.y > height) this.pos.y = 0;
+                if (this.pos.y < 0) this.pos.y = height;
+            }
+            display() {
+                drawingContext.shadowBlur = 15;
+                drawingContext.shadowColor = color(...this.color, 150);
+                noStroke();
+                fill(...this.color, 200);
+                if (this.type === 'fish') {
+                    push();
+                    translate(this.pos.x, this.pos.y);
+                    rotate(this.vel.heading());
+                    triangle(0, 0, -this.size, this.size / 2, -this.size, -this.size / 2);
+                    pop();
+                } else if (this.type === 'jelly') {
+                    ellipse(this.pos.x, this.pos.y, this.size, this.size * 1.2);
+                    stroke(...this.color, 150);
+                    for (let i = 0; i < 3; i++) {
+                        line(this.pos.x, this.pos.y + this.size / 2, 
+                             this.pos.x + random(-5, 5), this.pos.y + this.size);
+                    }
+                } else {
+                    arc(this.pos.x, this.pos.y, this.size, this.size, 0, PI * 1.5);
+                }
+                drawingContext.shadowBlur = 0;
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html>
